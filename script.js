@@ -262,6 +262,28 @@ function regexHint(pattern) {
     return knownHints[pattern] || `باید با الگوی تعریف‌شده برای این فیلد مطابقت داشته باشد: ${pattern}`;
 }
 
+/* ================================================================
+   setFieldErrorState — نمایش/پاک‌کردن خطا + کلاس .has-error روی کنترل
+   روی همهٔ کنترل‌ها کار می‌کند: input, select, textarea, jdate-wrap, combo-wrap
+   ================================================================ */
+function setFieldErrorState(control, message) {
+    if (!control) return;
+    const wrap = control.closest("[data-field-wrap]") || control.closest(".lf-field");
+    const errEl = wrap ? wrap.querySelector(".field-error") : null;
+    if (errEl) errEl.textContent = message || "";
+    control.classList.toggle("has-error", !!message);
+}
+
+/* پاک‌کردن خودکار خطا در لحظهٔ تایپ/تغییر کاربر — یک بار در سطح document */
+document.addEventListener("input", e => {
+    const ctl = e.target.closest && e.target.closest("[data-key]");
+    if (ctl) setFieldErrorState(ctl, "");
+}, true);
+document.addEventListener("change", e => {
+    const ctl = e.target.closest && e.target.closest("[data-key]");
+    if (ctl) setFieldErrorState(ctl, "");
+}, true);
+
 // ---- اعتبارسنجی مشترک یک مقدار برای یک فیلد قالب (هم در آپلود اکسل و هم در فرم ورود دستی استفاده می‌شود) ----
 // قانون کلیدی: الگوی Regex فقط وقتی نوع فیلد "text" است اعمال می‌شود.
 // برای number/date/datetime، تشخیص معتبر بودن صرفاً بر پایهٔ نوع داده انجام می‌شود، نه Regex.
@@ -269,7 +291,9 @@ function regexHint(pattern) {
 function validateFieldValue(field, value) {
     const isEmpty = value === undefined || value === null || String(value).trim() === "";
     if (field.required && isEmpty) {
-        return `فیلد «${field.label}» اجباری است و مقدار آن خالی است. یک مقدار برای این فیلد وارد کنید.`;
+        //field.style.borderColor ="red";
+
+        return `این فیلد اجباری است`;
     }
     if (isEmpty) return null;
 
@@ -347,24 +371,47 @@ function parseSize(dbType, raw) {
 function addFieldRow(data = {}) {
     const tr = document.createElement("tr");
     const curDb = dbTypeOf(data);
-    const typeOptions = Object.entries(ORACLE_TYPES).map(([k, v]) => `<option value="${k}" ${k === curDb ? "selected" : ""}>${v.label}</option>`).join("");
+    const typeOptions = Object.entries(ORACLE_TYPES).map(([k, v]) =>
+        `<option value="${k}" ${k === curDb ? "selected" : ""}>${v.label}</option>`).join("");
     const sizeVal = data.length ?? (data.precision != null ? (data.scale ? `${data.precision},${data.scale}` : data.precision) : "");
     let regexOptions = `<option value="">-- انتخاب Regex آماده --</option>`;
-    for (const [key, val] of Object.entries(PREDEFINED_REGEXES)) regexOptions += `<option value="${val.pattern}">${val.label}</option>`;
+    for (const [key, val] of Object.entries(PREDEFINED_REGEXES))
+        regexOptions += `<option value="${val.pattern}">${val.label}</option>`;
+
+    // گزینه‌های قالب‌های منبع (به‌جز خود قالب جاری) برای Dynamic Data
+    const currentTplId = Number($("editTemplateId").value || 0);
+    const sourceTemplates = savedTemplates.filter(t => t.id !== currentTplId);
+    const dsTemplateOptions = sourceTemplates.map(t =>
+        `<option value="${t.id}" ${data.dataSource && String(data.dataSource.templateId) === String(t.id) ? "selected" : ""}>${escapeHtml(t.name)}</option>`
+    ).join("");
 
     tr.innerHTML = `
         <td><input type="text" class="field-label" value="${escapeHtml(data.label || "")}" placeholder="مثلاً نام شرکت"></td>
         <td><input type="text" class="field-key" value="${escapeHtml(data.key || "")}" placeholder="CompanyName"></td>
         <td><input type="text" class="field-aliases" value="${escapeHtml((data.aliases || []).join(", "))}" placeholder="نام کمپانی, شرکت"></td>
-        <td><input type="checkbox" class="field-required" ${data.required ? "checked" : ""}></td>
+        <td>
+            <label class="switch" title="اجباری">
+                <input type="checkbox" class="field-required" ${data.required ? "checked" : ""}>
+                <span class="slider"></span>
+            </label>
+        </td>
         <td>
             <select class="field-type">${typeOptions}</select>
             <input type="text" class="field-size" value="${escapeHtml(sizeVal)}">
         </td>
         <td>
-            <div class="regex-container" style="display: flex; gap: 5px; flex-direction: column;">
+            <div class="regex-container" style="display:flex;gap:5px;flex-direction:column;">
                 <select class="predefined-regex-select" style="height:30px;font-size:11px;">${regexOptions}</select>
                 <input type="text" class="field-regex" value="${escapeHtml(data.regex || "")}" placeholder="مثلاً ^شماره\\s*ملی$" style="height:30px;font-size:11px;">
+            </div>
+        </td>
+        <td>
+            <div class="ds-config">
+                <select class="ds-template" title="اتصال به دادهٔ قالب دیگر (لیست کشویی جستجوپذیر)">
+                    <option value="">— بدون منبع داده —</option>
+                    ${dsTemplateOptions}
+                </select>
+                <select class="ds-display" title="فیلد نمایشی"></select>
             </div>
         </td>
         <td><button class="remove-btn" type="button">حذف</button></td>
@@ -375,18 +422,11 @@ function addFieldRow(data = {}) {
     const regexInput = tr.querySelector(".field-regex");
     const predefinedSelect = tr.querySelector(".predefined-regex-select");
 
-    // الگوی Regex (آماده یا دستی) فقط برای نوع "text" فعال است.
-    // برای number/date/datetime این بخش غیرفعال می‌شود چون اعتبارسنجی آن‌ها صرفاً از طریق تشخیص نوع داده انجام می‌شود.
     function toggleRegex() {
-        if (ORACLE_TYPES[typeSelect.value].base === "text") {
-            regexContainer.style.opacity = "1";
-            regexContainer.style.pointerEvents = "auto";
-        } else {
-            regexContainer.style.opacity = "0.3";
-            regexContainer.style.pointerEvents = "none";
-            regexInput.value = "";
-            predefinedSelect.value = "";
-        }
+        const isText = ORACLE_TYPES[typeSelect.value].base === "text";
+        regexContainer.style.opacity = isText ? "1" : "0.3";
+        regexContainer.style.pointerEvents = isText ? "auto" : "none";
+        if (!isText) { regexInput.value = ""; predefinedSelect.value = ""; }
     }
 
     const sizeInput = tr.querySelector(".field-size");
@@ -399,9 +439,27 @@ function addFieldRow(data = {}) {
     typeSelect.addEventListener("change", () => { sizeInput.value = ""; toggleRegex(); toggleSize(true); });
     toggleRegex(); toggleSize(false);
 
-    predefinedSelect.addEventListener("change", (e) => {
-        if (e.target.value) regexInput.value = e.target.value;
-    });
+    predefinedSelect.addEventListener("change", e => { if (e.target.value) regexInput.value = e.target.value; });
+
+    /* --- Dynamic Data Source: پر کردن فیلد نمایشی بر اساس قالب انتخابی --- */
+    const dsTemplateSel = tr.querySelector(".ds-template");
+    const dsDisplaySel = tr.querySelector(".ds-display");
+    function refreshDsFields() {
+        const tid = dsTemplateSel.value;
+        if (!tid) {
+            dsDisplaySel.style.display = "none";
+            dsDisplaySel.innerHTML = "";
+            return;
+        }
+        const tpl = savedTemplates.find(t => String(t.id) === tid);
+        if (!tpl) { dsDisplaySel.style.display = "none"; return; }
+        const cur = data.dataSource && String(data.dataSource.templateId) === String(tid) ? data.dataSource.displayKey : "";
+        dsDisplaySel.style.display = "";
+        dsDisplaySel.innerHTML = `<option value="">— فیلد نمایشی —</option>` +
+            tpl.fields.map(f => `<option value="${escapeHtml(f.key)}" ${cur === f.key ? "selected" : ""}>${escapeHtml(f.label)}</option>`).join("");
+    }
+    dsTemplateSel.addEventListener("change", refreshDsFields);
+    refreshDsFields();
 
     tr.querySelector(".remove-btn").onclick = () => tr.remove();
     $("fieldsContainer").appendChild(tr);
@@ -420,13 +478,24 @@ function collectFields() {
         if (!label || !key) throw new Error("عنوان فارسی و Key همه فیلدها باید تکمیل شود.");
         const dbType = row.querySelector(".field-type").value;
         const type = ORACLE_TYPES[dbType].base;
+
+        // --- خواندن منبع دادهٔ داینامیک (در صورت وجود) ---
+        const dsTemplateVal = row.querySelector(".ds-template")?.value || "";
+        let dataSource = null;
+        if (dsTemplateVal) {
+            const displayKey = row.querySelector(".ds-display")?.value || "";
+            if (!displayKey) throw new Error(`برای فیلد «${label}» که منبع داده دارد، فیلد نمایشی را انتخاب کنید.`);
+            dataSource = { templateId: Number(dsTemplateVal), displayKey, valueKey: displayKey };
+        }
+
         fields.push({
-            label, key, dbType, ...parseSize(dbType, row.querySelector(".field-size").value),
+            label, key, dbType,
+            ...parseSize(dbType, row.querySelector(".field-size").value),
             aliases: row.querySelector(".field-aliases").value.split(",").map(x => x.trim()).filter(Boolean),
             required: row.querySelector(".field-required").checked,
             type,
-            // تضمین قانون «Regex فقط برای text»: برای بقیه انواع همیشه خالی ذخیره می‌شود
-            regex: type === 'text' ? row.querySelector(".field-regex").value.trim() : ""
+            regex: type === "text" ? row.querySelector(".field-regex").value.trim() : "",
+            dataSource
         });
     }
     if (!fields.length) throw new Error("حداقل یک فیلد لازم است.");
@@ -772,6 +841,8 @@ $("generateBtn").onclick = async () => {
                 const value = sourceCol ? row[sourceCol] : ""; targetRow[field.key] = value;
                 const err = validateFieldValue(field, value);
                 if (err) errors.push(err);
+
+                
             });
 
             if (errors.length > 0) { targetRow._errors = errors.join(" ؛ "); targetRow._row_number = globalIndex; invalidRows.push(targetRow); }
@@ -914,12 +985,27 @@ function updateEntryTemplateSelector() {
 
 // --- لایهٔ UI: تولید خودکار المان HTML مناسب بر اساس نوع دادهٔ فیلد ---
 function buildEntryInput(field) {
+    // ۱) فیلد با منبع دادهٔ داینامیک → Combobox جستجوپذیر
+    if (field.dataSource && field.dataSource.templateId) {
+        return buildCombobox(field, { required: field.required });
+    }
+    // ۲) فیلد تاریخ/تاریخ‌وساعت → تقویم جلالی (ذخیرهٔ ISO میلادی)
+    if (field.type === "date") {
+        return buildJalaliPicker(field, { required: field.required, withTime: false });
+    }
+    if (field.type === "datetime") {
+        return buildJalaliPicker(field, { required: field.required, withTime: true });
+    }
+    // ۳) حالت‌های دیگر — بدون تغییر
     let input = document.createElement("input");
-    if (field.type === "number") { input.type = "number"; input.step = dbTypeOf(field) === "INTEGER" ? "1" : "any"; }
-    else if (field.type === "date") { input.type = "date"; }
-    else if (field.type === "datetime") { input.type = "datetime-local"; }
-    else { input.type = "text"; } // text و any هر دو به صورت ورودی متنی رندر می‌شوند
-
+    if (field.type === "number") {
+        input.type = "number";
+        input.step = dbTypeOf(field) === "INTEGER" ? "1" : "any";
+    } else if (field.type === "any") {
+        input.type = "text";
+    } else {
+        input.type = "text";
+    }
     input.dataset.key = field.key;
     if (field.required) input.required = true;
     return input;
@@ -996,9 +1082,11 @@ $("saveEntryBtn").onclick = () => {
         if (wrap.classList.contains("is-hidden")) { data[field.key] = ""; errSpan.textContent = ""; return; }
         const effective = inp.dataset.req === "1" ? { ...field, required: true } : field;
         const err = validateFieldValue(effective, inp.value);
-        errSpan.textContent = err || "";
-        if (err) { hasError = true; firstBad = firstBad || inp; }
+setFieldErrorState(inp, err);           // ✅ هم پیام، هم کلاس .has-error
+if (err) { hasError = true; firstBad = firstBad || inp; }
         data[field.key] = inp.value;
+
+        
     });
 
     if (hasError && window.LayoutEngine) LayoutEngine.reveal(firstBad);
@@ -1016,6 +1104,8 @@ $("saveEntryBtn").onclick = () => {
         showToast("رکورد جدید ذخیره شد.", "success");
     }
     persistEntryRecords(currentEntryTemplate.id, entryRecords);
+if (window.Combobox) window.Combobox.refreshAll();
+
     clearEntryForm();
     entryCurrentPage = Math.max(1, Math.ceil(entryRecords.length / entryRowsPerPage));
     renderEntriesTable();
@@ -1067,6 +1157,7 @@ function editEntryRecord(id) {
     $("editEntryId").value = id;
     $("entryFormContainer").querySelectorAll("[data-key]").forEach(inp => { inp.value = rec[inp.dataset.key] ?? ""; });
     $("entryFormContainer").querySelectorAll(".field-error").forEach(span => { span.textContent = ""; });
+    $("entryFormContainer").querySelectorAll(".has-error").forEach(el => el.classList.remove("has-error"));
     if (window.LayoutEngine) LayoutEngine.refresh($("entryFormContainer"));
     window.scrollTo({ top: $("entryFormSection").offsetTop - 20, behavior: "smooth" });
 }
@@ -1097,6 +1188,537 @@ $("exportEntriesBtn").onclick = () => {
     downloadExcel(dataForExport, `Entries_${currentEntryTemplate.name}.xlsx`, "Entries");
 };
 
+
+/* ================================================================
+   JALALI CALENDAR UTIL (Gregorian ⇄ Jalali, بدون وابستگی خارجی)
+   نمایش: جلالی | ذخیره‌سازی: ISO میلادی برای Oracle DATE
+   ================================================================ */
+const Jalali = (() => {
+    const div = (a, b) => ~~(a / b);
+    const mod = (a, b) => a - ~~(a / b) * b;
+    const breaks = [-61, 9, 38, 199, 426, 686, 756, 818, 1111, 1181, 1210, 1635, 2060, 2097, 2192, 2262, 2324, 2394, 2456, 3178];
+
+    function jalCal(jy) {
+        const bl = breaks.length, gy = jy + 621;
+        let leapJ = -14, jp = breaks[0], jm, jump, leap, leapG, march, n;
+        if (jy < jp || jy >= breaks[bl - 1]) throw new Error("Invalid Jalaali year");
+        for (let i = 1; i < bl; i++) {
+            jm = breaks[i]; jump = jm - jp;
+            if (jy < jm) break;
+            leapJ += div(jump, 33) * 8 + div(mod(jump, 33), 4);
+            jp = jm;
+        }
+        n = jy - jp;
+        leapJ += div(n, 33) * 8 + div(mod(n, 33) + 3, 4);
+        if (mod(jump, 33) === 4 && jump - n === 4) leapJ++;
+        leapG = div(gy, 4) - div((div(gy, 100) + 1) * 3, 4) - 150;
+        march = 20 + leapJ - leapG;
+        if (jump - n < 6) n = n - jump + div(jump + 4, 33) * 33;
+        leap = mod(mod(n + 1, 33) - 1, 4);
+        if (leap === -1) leap = 4;
+        return { leap, gy, march };
+    }
+    function g2d(gy, gm, gd) {
+        let d = div((gy + div(gm - 8, 6) + 100100) * 1461, 4) + div(153 * mod(gm + 9, 12) + 2, 5) + gd - 34840408;
+        d = d - div(div(gy + 100100 + div(gm - 8, 6), 100) * 3, 4) + 752;
+        return d;
+    }
+    function d2g(jdn) {
+        let j = 4 * jdn + 139361631;
+        j = j + div(div(4 * jdn + 183187720, 146097) * 3, 4) * 4 - 3908;
+        const i = div(mod(j, 1461), 4) * 5 + 308;
+        const gd = div(mod(i, 153), 5) + 1;
+        const gm = mod(div(i, 153), 12) + 1;
+        const gy = div(j, 1461) - 100100 + div(8 - gm, 6);
+        return { gy, gm, gd };
+    }
+    function j2d(jy, jm, jd) {
+        const r = jalCal(jy);
+        return g2d(r.gy, 3, r.march) + (jm - 1) * 31 - div(jm, 7) * (jm - 7) + jd - 1;
+    }
+    function d2j(jdn) {
+        let gy = d2g(jdn).gy, jy = gy - 621;
+        const r = jalCal(jy);
+        const jdn1f = g2d(gy, 3, r.march);
+        let jm, jd, k = jdn - jdn1f;
+        if (k >= 0) {
+            if (k <= 185) { jm = 1 + div(k, 31); jd = mod(k, 31) + 1; return { jy, jm, jd }; }
+            k -= 186;
+        } else { jy -= 1; k += 179; if (r.leap === 1) k++; }
+        jm = 7 + div(k, 30);
+        jd = mod(k, 30) + 1;
+        return { jy, jm, jd };
+    }
+    return {
+        toJalaali(gy, gm, gd) { return d2j(g2d(gy, gm, gd)); },
+        toGregorian(jy, jm, jd) { return d2g(j2d(jy, jm, jd)); },
+        isLeapYear(jy) { return jalCal(jy).leap === 0; },
+        monthLength(jy, jm) { return jm <= 6 ? 31 : jm <= 11 ? 30 : (this.isLeapYear(jy) ? 30 : 29); },
+        isValid(jy, jm, jd) { return jy >= -61 && jy <= 3177 && jm >= 1 && jm <= 12 && jd >= 1 && jd <= this.monthLength(jy, jm); }
+    };
+})();
+
+const JM_NAMES = ["فروردین","اردیبهشت","خرداد","تیر","مرداد","شهریور","مهر","آبان","آذر","دی","بهمن","اسفند"];
+
+/* ================================================================
+   سازندهٔ کنترل تقویم جلالی — مقدار داخلی به‌صورت ISO میلادی ذخیره می‌شود
+   (سازگار با Oracle DATE / TIMESTAMP)
+   ================================================================ */
+function buildJalaliPicker(field, opts = {}) {
+    const wrap = document.createElement("div");
+    wrap.className = "jdate-wrap lf-control";
+    wrap.dataset.key = field.key;
+    if (opts.required) wrap.dataset.req = "1";
+
+    const visible = document.createElement("input");
+    visible.type = "text";
+    visible.className = "jdate-visible";
+    visible.placeholder = opts.placeholder || "۱۴۰۳/۰۷/۰۸";
+    visible.readOnly = true;
+    visible.autocomplete = "off";
+
+    const hidden = document.createElement("input");
+    hidden.type = "hidden";
+
+    let timeInput = null;
+    if (opts.withTime) {
+        timeInput = document.createElement("input");
+        timeInput.type = "time";
+        timeInput.className = "jdate-time";
+    }
+
+    const popup = document.createElement("div");
+    popup.className = "jp-popup hidden";
+
+    let currentJ = { jy: 1403, jm: 7, jd: 1 };
+
+    function refreshVisible() {
+        if (!hidden.value) { visible.value = ""; return; }
+        const m = hidden.value.match(/^(\d{4})-(\d{2})-(\d{2})/);
+        if (!m) { visible.value = hidden.value; return; }
+        try {
+            const j = Jalali.toJalaali(+m[1], +m[2], +m[3]);
+            visible.value = `${j.jy}/${String(j.jm).padStart(2, "0")}/${String(j.jd).padStart(2, "0")}`;
+            currentJ = j;
+        } catch (_) { visible.value = hidden.value; }
+    }
+
+    Object.defineProperty(wrap, "value", {
+        get() { return hidden.value; },
+        set(v) {
+            hidden.value = v == null ? "" : String(v);
+            if (timeInput) {
+                const tm = hidden.value.match(/T(\d{2}:\d{2})/);
+                timeInput.value = tm ? tm[1] : "";
+            }
+            refreshVisible();
+        }
+    });
+    Object.defineProperty(wrap, "placeholder", {
+        get() { return visible.placeholder; },
+        set(v) { visible.placeholder = v; }
+    });
+
+    function commit(g, timeStr) {
+        let iso = `${g.gy}-${String(g.gm).padStart(2, "0")}-${String(g.gd).padStart(2, "0")}`;
+        if (timeInput && timeStr) iso += "T" + timeStr;
+        hidden.value = iso;
+        refreshVisible();
+        wrap.dispatchEvent(new Event("change", { bubbles: true }));
+        wrap.dispatchEvent(new Event("input", { bubbles: true }));
+    }
+
+    function renderDays() {
+        const { jy, jm } = currentJ;
+        const monthLen = Jalali.monthLength(jy, jm);
+        const firstG = Jalali.toGregorian(jy, jm, 1);
+        const firstDate = new Date(firstG.gy, firstG.gm - 1, firstG.gd);
+        const startCol = (firstDate.getDay() + 1) % 7; // شنبه = 0
+
+        const now = new Date();
+        const todayJ = Jalali.toJalaali(now.getFullYear(), now.getMonth() + 1, now.getDate());
+
+        let selJ = null;
+        if (hidden.value) {
+            const m = hidden.value.match(/^(\d{4})-(\d{2})-(\d{2})/);
+            if (m) try { selJ = Jalali.toJalaali(+m[1], +m[2], +m[3]); } catch (_) {}
+        }
+
+        let html = "";
+        const pm = jm === 1 ? 12 : jm - 1, py = jm === 1 ? jy - 1 : jy;
+        const pl = Jalali.monthLength(py, pm);
+        for (let i = 0; i < startCol; i++) {
+            const d = pl - startCol + 1 + i;
+            html += `<button type="button" class="other" data-jy="${py}" data-jm="${pm}" data-jd="${d}">${d}</button>`;
+        }
+        for (let d = 1; d <= monthLen; d++) {
+            const cls = [
+                selJ && selJ.jy === jy && selJ.jm === jm && selJ.jd === d ? "selected" : "",
+                todayJ.jy === jy && todayJ.jm === jm && todayJ.jd === d ? "today" : ""
+            ].filter(Boolean).join(" ");
+            html += `<button type="button" class="${cls}" data-jy="${jy}" data-jm="${jm}" data-jd="${d}">${d}</button>`;
+        }
+        const rem = (7 - ((startCol + monthLen) % 7)) % 7;
+        const nm = jm === 12 ? 1 : jm + 1, ny = jm === 12 ? jy + 1 : jy;
+        for (let d = 1; d <= rem; d++) {
+            html += `<button type="button" class="other" data-jy="${ny}" data-jm="${nm}" data-jd="${d}">${d}</button>`;
+        }
+
+        popup.innerHTML = `
+            <div class="jp-head">
+                <button type="button" data-nav="prev">‹</button>
+                <span class="jp-title">${JM_NAMES[jm - 1]} ${jy}</span>
+                <button type="button" data-nav="next">›</button>
+            </div>
+            <div class="jp-weekdays"><span>ش</span><span>ی</span><span>د</span><span>س</span><span>چ</span><span>پ</span><span>ج</span></div>
+            <div class="jp-days">${html}</div>
+            <div class="jp-foot">
+                <button type="button" data-act="today">امروز</button>
+                <button type="button" data-act="clear">پاک کردن</button>
+            </div>`;
+
+        popup.querySelectorAll("[data-nav]").forEach(b => b.onclick = e => {
+            e.stopPropagation();
+            const dir = b.dataset.nav === "next" ? 1 : -1;
+            let nm2 = currentJ.jm + dir, ny2 = currentJ.jy;
+            if (nm2 < 1) { nm2 = 12; ny2--; }
+            if (nm2 > 12) { nm2 = 1; ny2++; }
+            currentJ = { jy: ny2, jm: nm2, jd: 1 };
+            renderDays();
+        });
+        popup.querySelectorAll(".jp-days button").forEach(b => b.onclick = e => {
+            e.stopPropagation();
+            const g = Jalali.toGregorian(+b.dataset.jy, +b.dataset.jm, +b.dataset.jd);
+            commit(g, timeInput ? timeInput.value : null);
+            close();
+        });
+        popup.querySelector('[data-act="today"]').onclick = e => {
+            e.stopPropagation();
+            const d = new Date();
+            commit({ gy: d.getFullYear(), gm: d.getMonth() + 1, gd: d.getDate() }, timeInput ? (timeInput.value || "00:00") : null);
+            close();
+        };
+        popup.querySelector('[data-act="clear"]').onclick = e => {
+            e.stopPropagation();
+            hidden.value = "";
+            if (timeInput) timeInput.value = "";
+            refreshVisible();
+            close();
+            wrap.dispatchEvent(new Event("change", { bubbles: true }));
+            wrap.dispatchEvent(new Event("input", { bubbles: true }));
+        };
+    }
+
+    function open() {
+        if (hidden.value) {
+            const m = hidden.value.match(/^(\d{4})-(\d{2})-(\d{2})/);
+            if (m) try { currentJ = Jalali.toJalaali(+m[1], +m[2], +m[3]); } catch (_) {}
+        } else {
+            const d = new Date();
+            currentJ = Jalali.toJalaali(d.getFullYear(), d.getMonth() + 1, d.getDate());
+        }
+        renderDays();
+        popup.classList.remove("hidden");
+    }
+    function close() { popup.classList.add("hidden"); }
+
+    visible.addEventListener("click", open);
+    if (timeInput) timeInput.addEventListener("change", () => {
+        if (!hidden.value) return;
+        const m = hidden.value.match(/^(\d{4}-\d{2}-\d{2})/);
+        if (m) {
+            hidden.value = m[1] + (timeInput.value ? "T" + timeInput.value : "");
+            wrap.dispatchEvent(new Event("change", { bubbles: true }));
+            wrap.dispatchEvent(new Event("input", { bubbles: true }));
+        }
+    });
+    // بستن با کلیک بیرون (فقط یک بار در سطح document ثبت می‌شود)
+    if (!buildJalaliPicker._docBound) {
+        buildJalaliPicker._docBound = true;
+        document.addEventListener("mousedown", e => {
+            document.querySelectorAll(".jdate-wrap").forEach(w => {
+                if (!w.contains(e.target)) w.querySelector(".jp-popup")?.classList.add("hidden");
+            });
+        });
+    }
+
+    wrap.appendChild(visible);
+    if (timeInput) wrap.appendChild(timeInput);
+    wrap.appendChild(hidden);
+    wrap.appendChild(popup);
+    return wrap;
+}
+
+/* ================================================================
+   سازندهٔ Combobox جستجوپذیر متصل به دادهٔ قالب دیگر
+   field.dataSource = { templateId, displayKey, valueKey? }
+   ================================================================ */
+/* ================================================================
+   Combobox جستجوپذیر (به سبک Select2) متصل به دادهٔ قالب دیگر
+   field.dataSource = { templateId, displayKey, valueKey? }
+   ================================================================ */
+function buildCombobox(field, opts = {}) {
+    const wrap = document.createElement("div");
+    wrap.className = "combo-wrap lf-control";
+    wrap.dataset.key = field.key;
+    if (opts.required) wrap.dataset.req = "1";
+    wrap.__field = field; // برای refresh بعدی
+
+    const visible = document.createElement("input");
+    visible.type = "text";
+    visible.className = "combo-visible";
+    visible.placeholder = opts.placeholder || "— جستجو و انتخاب —";
+    visible.autocomplete = "off";
+    visible.spellcheck = false;
+
+    const hidden = document.createElement("input");
+    hidden.type = "hidden";
+
+    const clearBtn = document.createElement("button");
+    clearBtn.type = "button";
+    clearBtn.className = "combo-clear";
+    clearBtn.setAttribute("aria-label", "پاک کردن انتخاب");
+    clearBtn.textContent = "×";
+
+    const list = document.createElement("div");
+    list.className = "combo-list hidden";
+    list.setAttribute("role", "listbox");
+
+    let allOptions = [];
+    let filtered = [];
+    let activeIdx = -1;
+    let loaded = false;
+
+    /* ---------- بارگذاری داده از LocalStorage ---------- */
+    function loadOptions() {
+        const ds = field.dataSource || {};
+        if (!ds.templateId) { allOptions = []; loaded = true; return; }
+
+        let allEntries = {};
+        try {
+            allEntries = JSON.parse(localStorage.getItem(ENTRY_STORAGE_KEY) || "{}");
+        } catch (_) { allEntries = {}; }
+
+        const records = allEntries[String(ds.templateId)] || [];
+        const tpl = savedTemplates.find(t => String(t.id) === String(ds.templateId));
+        const displayKey = ds.displayKey || (tpl && tpl.fields[0] && tpl.fields[0].key);
+        const valueKey = ds.valueKey || displayKey;
+        if (!tpl || !displayKey) { allOptions = []; loaded = true; return; }
+
+        allOptions = records.map(rec => {
+            const label = String(rec[displayKey] ?? "").trim();
+            const value = String(rec[valueKey] ?? "").trim();
+            if (!label && !value) return null;
+            return {
+                value: value || label,
+                label: label || value,
+                search: (label + " " + value).toLowerCase()
+            };
+        }).filter(Boolean);
+
+        loaded = true;
+    }
+
+    function getLabelOf(v) {
+        const o = allOptions.find(x => String(x.value) === String(v));
+        return o ? o.label : String(v);
+    }
+    function updateHasValue() { wrap.classList.toggle("has-value", !!hidden.value); }
+
+    function setValue(v, silent) {
+        hidden.value = v == null ? "" : String(v);
+        visible.value = hidden.value ? getLabelOf(hidden.value) : "";
+        updateHasValue();
+        if (!silent) {
+            wrap.dispatchEvent(new Event("change", { bubbles: true }));
+            wrap.dispatchEvent(new Event("input",  { bubbles: true }));
+        }
+    }
+
+    /* ---------- API .value / .placeholder ---------- */
+    Object.defineProperty(wrap, "value", {
+        get() { return hidden.value; },
+        set(v) { if (!loaded) loadOptions(); setValue(v, true); }
+    });
+    Object.defineProperty(wrap, "placeholder", {
+        get() { return visible.placeholder; },
+        set(v) { visible.placeholder = v; }
+    });
+
+    /* ---------- Highlight کردن قسمت مطابق ---------- */
+    function highlight(text, q) {
+        if (!q) return escapeHtml(text);
+        const i = text.toLowerCase().indexOf(q.toLowerCase());
+        if (i < 0) return escapeHtml(text);
+        return escapeHtml(text.slice(0, i)) +
+            "<mark>" + escapeHtml(text.slice(i, i + q.length)) + "</mark>" +
+            escapeHtml(text.slice(i + q.length));
+    }
+
+    /* ---------- فیلتر هوشمند (prefix > substring > fuzzy) ---------- */
+    function filterOptions(q) {
+        const query = (q || "").trim().toLowerCase();
+        if (!query) return allOptions.slice();
+        const words = query.split(/\s+/);
+        const first = words[0];
+        const starts = [], contains = [], rest = [];
+        for (const o of allOptions) {
+            if (o.search.startsWith(first)) starts.push(o);
+            else if (words.every(w => o.search.includes(w))) contains.push(o);
+            else if (o.search.includes(first)) rest.push(o);
+        }
+        return [...starts, ...contains, ...rest];
+    }
+
+    /* ---------- رندر لیست ---------- */
+    function renderList(q) {
+        filtered = filterOptions(q);
+        const total = filtered.length;
+        if (filtered.length > 100) filtered = filtered.slice(0, 100);
+        activeIdx = -1;
+
+        if (!loaded) {
+            list.innerHTML = `<div class="combo-loading">در حال بارگذاری…</div>`;
+            return;
+        }
+        if (!allOptions.length) {
+            const srcTpl = savedTemplates.find(t => String(t.id) === String((field.dataSource || {}).templateId));
+            list.innerHTML = `<div class="combo-empty">
+                هیچ رکوردی در منبع داده یافت نشد.<br>
+                <small>ابتدا در تب «فرم ورود دستی داده» قالب
+                «${escapeHtml(srcTpl ? srcTpl.name : "—")}» را انتخاب و چند رکورد ثبت کنید.</small>
+            </div>`;
+            return;
+        }
+        if (!total) {
+            list.innerHTML = `<div class="combo-empty">موردی با این عبارت یافت نشد.</div>`;
+            return;
+        }
+
+        list.innerHTML =
+            filtered.map((o, i) =>
+                `<div class="combo-item" role="option" data-idx="${i}" data-value="${escapeHtml(o.value)}">
+                    ${highlight(o.label, q)}
+                 </div>`
+            ).join("") +
+            (total > 100
+                ? `<div class="combo-more">${total - 100} مورد دیگر — جستجو را دقیق‌تر کنید</div>`
+                : "") +
+            `<div class="combo-foot">
+                <span>${total} رکورد</span>
+                <button type="button" data-act="refresh" title="بارگذاری مجدد">↻</button>
+             </div>`;
+
+        list.querySelectorAll(".combo-item").forEach(el => {
+            el.addEventListener("mousedown", e => {
+                e.preventDefault();
+                const o = filtered[+el.dataset.idx];
+                if (o) { setValue(o.value); close(); }
+            });
+            el.addEventListener("mouseenter", () => {
+                list.querySelectorAll(".combo-item").forEach(x => x.classList.remove("active"));
+                el.classList.add("active");
+                activeIdx = +el.dataset.idx;
+            });
+        });
+        const refBtn = list.querySelector('[data-act="refresh"]');
+        if (refBtn) refBtn.addEventListener("mousedown", e => {
+            e.preventDefault();
+            refresh();
+        });
+    }
+
+    function open() {
+        if (!loaded) loadOptions();
+        list.classList.remove("hidden");
+        renderList("");
+        setTimeout(() => {
+            const cur = [...list.querySelectorAll(".combo-item")]
+                .find(el => el.dataset.value === hidden.value);
+            if (cur) cur.scrollIntoView({ block: "center" });
+        }, 20);
+    }
+    function close() {
+        list.classList.add("hidden");
+        activeIdx = -1;
+    }
+    function refresh() {
+        loaded = false;
+        loadOptions();
+        if (!list.classList.contains("hidden")) renderList(visible.value);
+    }
+    wrap.__refresh = refresh;
+
+    /* ---------- رویدادها ---------- */
+    visible.addEventListener("focus", () => {
+        if (hidden.value) visible.value = ""; // برای جستجوی سریع، پاک شود
+        open();
+    });
+    visible.addEventListener("input", () => {
+        // اگر کاربر متن را دقیقاً برابر برچسب مقدار فعلی کرد، انتخاب را حفظ کن
+        if (hidden.value && visible.value === getLabelOf(hidden.value)) return;
+        if (hidden.value) { hidden.value = ""; updateHasValue(); }
+        renderList(visible.value);
+        list.classList.remove("hidden");
+    });
+    visible.addEventListener("keydown", e => {
+        if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+            e.preventDefault();
+            if (list.classList.contains("hidden")) { open(); return; }
+            if (!filtered.length) return;
+            activeIdx = e.key === "ArrowDown"
+                ? Math.min(filtered.length - 1, activeIdx + 1)
+                : Math.max(0, activeIdx - 1);
+            list.querySelectorAll(".combo-item").forEach((el, i) =>
+                el.classList.toggle("active", i === activeIdx));
+            list.querySelector(`.combo-item[data-idx="${activeIdx}"]`)
+                ?.scrollIntoView({ block: "nearest" });
+        } else if (e.key === "Enter") {
+            if (activeIdx >= 0 && filtered[activeIdx] && !list.classList.contains("hidden")) {
+                e.preventDefault();
+                setValue(filtered[activeIdx].value);
+                close();
+            }
+        } else if (e.key === "Escape") {
+            close();
+            if (hidden.value) visible.value = getLabelOf(hidden.value);
+        } else if (e.key === "Tab") {
+            if (!hidden.value && visible.value) visible.value = "";
+            close();
+        }
+    });
+    visible.addEventListener("blur", () => setTimeout(() => {
+        if (!wrap.contains(document.activeElement)) {
+            close();
+            if (hidden.value) visible.value = getLabelOf(hidden.value);
+            else visible.value = "";
+        }
+    }, 150));
+
+    clearBtn.addEventListener("mousedown", e => {
+        e.preventDefault(); e.stopPropagation();
+        setValue("");
+        visible.focus();
+        open();
+    });
+
+    /* ---------- Mount ---------- */
+    loadOptions(); // ✅ بارگذاری eager
+    wrap.appendChild(visible);
+    wrap.appendChild(clearBtn);
+    wrap.appendChild(hidden);
+    wrap.appendChild(list);
+    return wrap;
+}
+
+/* ================================================================
+   API سراسری برای رفرش همهٔ Comboboxها پس از افزودن رکورد جدید
+   ================================================================ */
+window.Combobox = {
+    refreshAll(root = document) {
+        root.querySelectorAll(".combo-wrap").forEach(w => w.__refresh && w.__refresh());
+    }
+};
 // ================================================================
 // 9. Initialize
 // ================================================================

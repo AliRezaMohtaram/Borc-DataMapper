@@ -58,16 +58,37 @@
     }
 
     function buildControl(field, block) {
+        /* ۱) فیلد دارای منبع دادهٔ داینامیک → Combobox جستجوپذیر
+              (اولویت بالاتر از widget — چون ممکن است widget پیش‌فرض input باشد) */
+        if (field.dataSource && field.dataSource.templateId && typeof buildCombobox === "function") {
+            return buildCombobox(field, {
+                required: block.required,
+                placeholder: block.placeholder
+            });
+        }
+
+        /* ۲) تاریخ/تاریخ‌وساعت → تقویم جلالی (ذخیره‌سازی ISO میلادی) */
+        if ((field.type === "date" || field.type === "datetime") && typeof buildJalaliPicker === "function") {
+            return buildJalaliPicker(field, {
+                required: block.required,
+                placeholder: block.placeholder,
+                withTime: field.type === "datetime"
+            });
+        }
+
+        /* ۳) بقیهٔ حالت‌ها — بدون تغییر */
         const w = widgetOf(field, block);
         let c;
         if (w === "textarea") { c = el("textarea"); c.rows = 4; }
         else if (w === "select") {
-            c = el("select", null, `<option value="">— انتخاب کنید —</option>` + (block.options || []).map(o => `<option value="${esc(o)}">${esc(o)}</option>`).join(""));
+            c = el("select", null, `<option value="">— انتخاب کنید —</option>` +
+                (block.options || []).map(o => `<option value="${esc(o)}">${esc(o)}</option>`).join(""));
         } else if (w === "radio") {
             c = el("div", "lf-radio");
             const name = "r" + uid();
-            (block.options || []).forEach(o => c.appendChild(el("label", "lf-radio-item", `<input type="radio" name="${name}" value="${esc(o)}"><span>${esc(o)}</span>`)));
-            // radio-group مثل یک کنترل معمولی .value دارد تا کد ذخیره/ویرایش رکورد تغییری لازم نداشته باشد
+            (block.options || []).forEach(o => c.appendChild(
+                el("label", "lf-radio-item",
+                    `<input type="radio" name="${name}" value="${esc(o)}"><span>${esc(o)}</span>`)));
             Object.defineProperty(c, "value", {
                 get() { const r = c.querySelector("input:checked"); return r ? r.value : ""; },
                 set(v) { c.querySelectorAll("input").forEach(r => { r.checked = r.value === String(v); }); }
@@ -135,7 +156,8 @@
             const errEl = wrap && wrap.querySelector(".field-error");
             if (!f || !wrap || wrap.classList.contains("is-hidden")) { if (errEl) errEl.textContent = ""; return; }
             const msg = validateFieldValue(inp.dataset.req === "1" ? { ...f, required: true } : f, inp.value);
-            errEl.textContent = msg || "";
+            if (typeof setFieldErrorState === "function") setFieldErrorState(inp, msg);
+            else if (errEl) errEl.textContent = msg || "";
             if (msg) { ok = false; first = first || inp; }
         });
         return { ok, first };
@@ -202,13 +224,21 @@
                     const v = src && !src.closest(".is-hidden") ? String(src.value ?? "").trim() : "";
                     const show = rule.op === "eq" ? v === String(rule.value)
                         : rule.op === "neq" ? v !== String(rule.value)
-                        : rule.op === "filled" ? v !== "" : v === "";
+                            : rule.op === "filled" ? v !== "" : v === "";
                     w.classList.toggle("is-hidden", !show);
                 });
             }
         }
         form.addEventListener("input", applyLogic);
         form.addEventListener("change", applyLogic);
+        form.addEventListener("input", e => {
+            const ctl = e.target.closest && e.target.closest("[data-key]");
+            if (ctl && typeof setFieldErrorState === "function") setFieldErrorState(ctl, "");
+        });
+        form.addEventListener("change", e => {
+            const ctl = e.target.closest && e.target.closest("[data-key]");
+            if (ctl && typeof setFieldErrorState === "function") setFieldErrorState(ctl, "");
+        });
         form._refresh = applyLogic;
         form._reset = () => { applyLogic(); show(0); };
         form._show = show;
@@ -647,7 +677,15 @@
             if (canWidget && ["select", "radio"].includes(w)) h += F("گزینه‌ها (هر خط یک گزینه)", `<textarea rows="4" data-prop="options">${esc((b.options || []).join("\n"))}</textarea>`);
             if (w !== "radio") h += F("متن نمونه (Placeholder)", `<input type="text" data-prop="placeholder" value="${esc(b.placeholder)}">`);
             h += F("توضیح زیر فیلد", `<input type="text" data-prop="help" value="${esc(b.help)}">`);
-            h += `<label class="ld-check-row"><input type="checkbox" data-prop="required" ${f.required || b.required ? "checked" : ""} ${f.required ? "disabled" : ""}> اجباری ${f.required ? "<small>(طبق قالب)</small>" : ""}</label>`;
+
+            h += `<div class="ld-f" style="display:flex;align-items:center;gap:10px;">
+        <label style="flex:1;margin:0;">اجباری</label>
+        <label class="switch" title="اجباری">
+            <input type="checkbox" data-prop="required" ${f.required || b.required ? "checked" : ""} ${f.required ? "disabled" : ""}>
+            <span class="slider"></span>
+        </label>
+        ${f.required ? '<small style="color:var(--faint);">(طبق قالب)</small>' : ""}
+      </div>`;
         }
         if (b.type === "heading") {
             h += F("متن عنوان", `<input type="text" data-prop="text" value="${esc(b.text)}">`);

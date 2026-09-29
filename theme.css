@@ -6,7 +6,7 @@
   --surface-2: #1b2330;
   --surface-3: #222c39;
   --input-bg: rgba(17,23,33,.85);
-
+  --danger : rgb(152, 2, 2);
   /* Text */
   --text: var(--text);
   --text-strong: var(--text-strong);
@@ -97,6 +97,8 @@
   --selection-color: rgba(15,23,42,.08);
   --selection-color-strong: rgba(15,23,42,.14);
   color-scheme: light;
+    --danger : rgb(152, 2, 2);
+
 }
 
 
@@ -256,6 +258,7 @@ textarea {
   background: var(--input-bg);
   outline: none;
 }
+
 .search kbd {
   position: absolute;
   right: 10px;
@@ -1047,7 +1050,8 @@ th {
   min-height: 16px;
   margin-top: 4px;
   font-size: 11px;
-  color: var(--danger);
+  color: rgb(152, 2, 2);
+;
 }
 .entries-empty {
   text-align: center;
@@ -1254,7 +1258,8 @@ th {
   margin-top: 5px;
   font-size: 11.5px;
   line-height: 1.6;
-  color: var(--danger);
+  color: rgb(152, 2, 2);
+;
 }
 .lf-field .field-error:empty {
   display: none;
@@ -2465,3 +2470,319 @@ th {
 
 html { font-size:var(--font-size); }
 body { background:var(--bg); color:var(--text); font-family:var(--sans); transition:background-color .25s ease,color .25s ease; }
+
+
+
+/* ============================================================
+   SWITCH (جایگزین checkbox)
+   ============================================================ */
+.switch {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    width: 42px;
+    height: 22px;
+    flex: none;
+    vertical-align: middle;
+}
+.switch > input {
+    position: absolute;
+    inset: 0;
+    opacity: 0;
+    margin: 0;
+    cursor: pointer;
+    z-index: 1;
+}
+.switch > .slider {
+    position: absolute;
+    inset: 0;
+    background: var(--line-strong);
+    border-radius: 999px;
+    transition: background .22s ease;
+    pointer-events: none;
+}
+.switch > .slider::before {
+    content: "";
+    position: absolute;
+    width: 16px; height: 16px;
+    top: 3px;
+    inset-inline-start: 3px;
+    background: #fff;
+    border-radius: 50%;
+    transition: transform .22s ease;
+    box-shadow: 0 1px 3px rgba(0,0,0,.35);
+}
+.switch > input:checked ~ .slider { background: rgb(var(--sel) / .9); }
+.switch > input:checked ~ .slider::before { transform: translateX(20px); }
+[dir="rtl"] .switch > input:checked ~ .slider::before { transform: translateX(-20px); }
+.switch > input:disabled ~ .slider { opacity: .4; cursor: not-allowed; }
+.switch > input:focus-visible ~ .slider { box-shadow: 0 0 0 3px rgb(var(--sel) / .25); }
+
+/* ============================================================
+   JALALI DATE PICKER
+   ============================================================ */
+.jdate-wrap {
+    position: relative;
+    display: flex;
+    align-items: stretch;
+    gap: 6px;
+    width: 100%;
+}
+.jdate-wrap .jdate-visible {
+    flex: 1;
+    min-width: 0;
+    direction: ltr;
+    text-align: center;
+    cursor: pointer;
+    padding-inline: 14px;
+    font-family: var(--mono);
+    letter-spacing: .04em;
+}
+.jdate-wrap .jdate-time {
+    width: auto;
+    min-width: 96px;
+    flex: none;
+    direction: ltr;
+    text-align: center;
+    font-family: var(--mono);
+}
+.jp-popup {
+    position: absolute;
+    top: calc(100% + 6px);
+    inset-inline-start: 0;
+    z-index: 60;
+    background: var(--surface-2);
+    border: 1px solid var(--line-strong);
+    border-radius: 12px;
+    padding: 12px;
+    box-shadow: 0 24px 48px -18px rgba(0,0,0,.7);
+    min-width: 268px;
+    direction: rtl;
+    animation: fadeUpIn .18s ease;
+}
+.jp-popup.hidden { display: none; }
+.jp-head {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 10px; gap: 8px;
+}
+.jp-head button {
+    background: transparent; border: 1px solid var(--line);
+    color: var(--muted); width: 28px; height: 28px;
+    border-radius: 8px; cursor: pointer; font-size: 14px;
+    display: grid; place-items: center;
+}
+.jp-head button:hover { color: var(--primary); border-color: var(--primary); }
+.jp-title { font-weight: 600; font-size: 13.5px; color: var(--text); }
+.jp-weekdays, .jp-days {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 2px;
+}
+.jp-weekdays { margin-bottom: 4px; }
+.jp-weekdays span {
+    text-align: center; font-size: 11px;
+    color: var(--faint); padding: 4px 0;
+}
+.jp-days button {
+    aspect-ratio: 1;
+    border: 0; background: transparent;
+    color: var(--text); border-radius: 6px;
+    cursor: pointer; font-size: 12px;
+    font-family: inherit;
+}
+.jp-days button:hover { background: rgb(var(--sel) / .12); }
+.jp-days button.other { color: var(--faint); opacity: .55; }
+.jp-days button.today { border: 1px solid rgb(var(--sel) / .55); }
+.jp-days button.selected {
+    background: rgb(var(--sel) / .85);
+    color: var(--text-inverse);
+    font-weight: 700;
+}
+.jp-foot {
+    display: flex; justify-content: space-between;
+    margin-top: 10px; padding-top: 8px;
+    border-top: 1px solid var(--line);
+}
+.jp-foot button {
+    background: transparent; border: 0;
+    color: var(--primary); font-size: 12px;
+    cursor: pointer; padding: 4px 10px; border-radius: 6px;
+}
+.jp-foot button:hover { background: rgb(var(--sel) / .1); }
+
+/* ============================================================
+   SEARCHABLE COMBOBOX (Dynamic Data)
+/* ============================================================
+   SEARCHABLE COMBOBOX (Select2-like)
+   ============================================================ */
+.combo-wrap {
+    position: relative;
+    display: flex;
+    align-items: center;
+    width: 100%;
+}
+.combo-wrap .combo-visible {
+    flex: 1;
+    min-width: 0;
+    cursor: text;
+    padding-inline-end: 34px;
+    background: var(--input-bg);
+}
+.combo-wrap .combo-visible:focus {
+    border-color: rgb(var(--sel) / .7);
+    box-shadow: 0 0 0 3px rgb(var(--sel) / .16);
+}
+.combo-list {
+    position: absolute;
+    top: calc(100% + 4px);
+    inset-inline: 0;
+    z-index: 60;
+    max-height: 300px;
+    overflow-y: auto;
+    background: var(--surface-2);
+    border: 1px solid var(--line-strong);
+    border-radius: 10px;
+    box-shadow: 0 24px 48px -18px rgba(0,0,0,.7);
+    padding: 4px;
+    animation: fadeUpIn .15s ease;
+    direction: rtl;
+}
+.combo-list.hidden { display: none; }
+.combo-list::-webkit-scrollbar { width: 8px; }
+.combo-list::-webkit-scrollbar-thumb {
+    background: var(--line-strong);
+    border-radius: 8px;
+}
+.combo-item {
+    padding: 9px 12px;
+    border-radius: 7px;
+    cursor: pointer;
+    font-size: 13px;
+    color: var(--text);
+    transition: background .12s ease;
+    user-select: none;
+}
+.combo-item:hover,
+.combo-item.active {
+    background: rgb(var(--sel) / .14);
+}
+.combo-item mark {
+    background: transparent;
+    color: var(--primary);
+    font-weight: 700;
+}
+.combo-loading,
+.combo-empty {
+    padding: 16px 12px;
+    text-align: center;
+    color: var(--faint);
+    font-size: 12px;
+    line-height: 1.8;
+}
+.combo-empty small {
+    display: block;
+    margin-top: 6px;
+    color: var(--muted);
+    font-size: 11.5px;
+}
+.combo-more {
+    padding: 8px 12px;
+    text-align: center;
+    color: var(--faint);
+    font-size: 11px;
+    border-top: 1px solid var(--line-soft);
+}
+.combo-foot {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 6px 10px;
+    margin-top: 4px;
+    border-top: 1px solid var(--line);
+    font: 11px var(--mono);
+    color: var(--faint);
+}
+.combo-foot button {
+    background: transparent;
+    border: 0;
+    color: var(--muted);
+    cursor: pointer;
+    font-size: 14px;
+    padding: 2px 6px;
+    border-radius: 5px;
+}
+.combo-foot button:hover {
+    color: var(--primary);
+    background: rgb(var(--sel) / .1);
+}
+.combo-clear {
+    position: absolute;
+    inset-inline-end: 8px;
+    top: 50%;
+    transform: translateY(-50%);
+    background: transparent;
+    border: 0;
+    color: var(--faint);
+    cursor: pointer;
+    font-size: 17px;
+    line-height: 1;
+    padding: 2px 7px;
+    border-radius: 5px;
+    display: none;
+    z-index: 2;
+}
+.combo-wrap.has-value .combo-clear { display: block; }
+.combo-clear:hover { color: var(--danger); background: var(--danger-soft); }
+/* ستون منبع داده در جدول سازنده */
+.ds-config {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-width: 160px;
+}
+.ds-config select {
+    font-size: 11px;
+    height: 28px;
+    padding: 0 8px;
+}
+
+/* ============================================================
+   FIELD ERROR STATE — border قرمز روی کنترل‌های دارای خطا
+   ============================================================ */
+.has-error,
+.has-error > input,
+.has-error > select,
+.has-error > textarea,
+.has-error input,
+.has-error select,
+.has-error textarea,
+.has-error .jdate-visible,
+.has-error .jdate-time,
+.has-error .combo-visible {
+    border-color: var(--danger) !important;
+    box-shadow: 0 0 0 3px var(--danger-soft) !important;
+    transition: border-color .18s ease, box-shadow .18s ease;
+}
+
+.has-error .combo-visible:focus,
+.has-error .jdate-visible:focus {
+    border-color: var(--danger) !important;
+    box-shadow: 0 0 0 3px var(--danger-soft) !important;
+}
+
+/* هالهٔ قرمز روی لیبل نیز برای وضوح بیشتر */
+.has-error + label,
+.field-error:not(:empty) {
+    color: var(--danger);
+}
+
+/* فیلدهای دارای Layout (lf-field) */
+.lf-field .has-error,
+.lf-field .has-error input,
+.lf-field .has-error select,
+.lf-field .has-error textarea,
+.lf-field .has-error .jdate-visible,
+.lf-field .has-error .combo-visible {
+    border-color: rgb(220, 7, 7) !important;
+    box-shadow: 0 0 0 3px var(--danger-soft) !important;
+}
